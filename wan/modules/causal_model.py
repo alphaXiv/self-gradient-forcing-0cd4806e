@@ -117,6 +117,11 @@ class CausalWanSelfAttention(nn.Module):
         self.qk_norm = qk_norm
         self.eps = eps
         self.max_attention_size = 32760 if local_attn_size == -1 else local_attn_size * 1560
+        # Frozen-cache Self Forcing control: stop-grad the clean-context K/V in
+        # the teacher-forcing pass so future losses supervise cache reads only.
+        self.context_kv_stop_grad = False
+        # Memory probe: detach K/V before writing them into the rollout cache.
+        self.kv_cache_write_detach = False
 
         # ── Streaming long-video KV cache (relative RoPE) ──────────────────
         # When `kv_rope_relative` is True the self-attention stores *un-roped*
@@ -182,6 +187,10 @@ class CausalWanSelfAttention(nn.Module):
             # if it is teacher forcing training?
             is_tf = (s == seq_lens[0].item() * 2)
             if is_tf:
+                if self.context_kv_stop_grad:
+                    half = s // 2
+                    k = torch.cat([k[:, :half].detach(), k[:, half:]], dim=1)
+                    v = torch.cat([v[:, :half].detach(), v[:, half:]], dim=1)
                 q_chunk = torch.chunk(q, 2, dim=1)
                 k_chunk = torch.chunk(k, 2, dim=1)
                 roped_query = []
@@ -372,14 +381,14 @@ class CausalWanSelfAttention(nn.Module):
                 local_end_index = kv_cache["local_end_index"].item() + current_end - \
                     kv_cache["global_end_index"].item() - num_evicted_tokens
                 local_start_index = local_end_index - num_new_tokens
-                kv_cache["k"][:, local_start_index:local_end_index] = roped_key
-                kv_cache["v"][:, local_start_index:local_end_index] = v
+                kv_cache["k"][:, local_start_index:local_end_index] = roped_key.detach() if self.kv_cache_write_detach else roped_key
+                kv_cache["v"][:, local_start_index:local_end_index] = v.detach() if self.kv_cache_write_detach else v
             else:
                 # Assign new keys/values directly up to current_end
                 local_end_index = kv_cache["local_end_index"].item() + current_end - kv_cache["global_end_index"].item()
                 local_start_index = local_end_index - num_new_tokens
-                kv_cache["k"][:, local_start_index:local_end_index] = roped_key
-                kv_cache["v"][:, local_start_index:local_end_index] = v
+                kv_cache["k"][:, local_start_index:local_end_index] = roped_key.detach() if self.kv_cache_write_detach else roped_key
+                kv_cache["v"][:, local_start_index:local_end_index] = v.detach() if self.kv_cache_write_detach else v
             win_lo = max(0, local_end_index - self.max_attention_size)
             if self.local_attn_size != -1 and sink_tokens > 0 and win_lo > sink_tokens:
                 # Disjoint sink + recent window (a real gap separates them).

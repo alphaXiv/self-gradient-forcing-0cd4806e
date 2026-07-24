@@ -45,6 +45,15 @@ class BaseModel(nn.Module):
         self.generator = WanDiffusionWrapper(**getattr(args, "model_kwargs", {}), is_causal=self.iscausal)
         self.generator.model.requires_grad_(True)
 
+        if getattr(args, "context_kv_stop_grad", False):
+            from wan.modules.causal_model import CausalWanSelfAttention
+            n_flagged = 0
+            for m in self.generator.model.modules():
+                if isinstance(m, CausalWanSelfAttention):
+                    m.context_kv_stop_grad = True
+                    n_flagged += 1
+            print(f"[control] frozen-context-gradient: context_kv_stop_grad on {n_flagged} self-attn modules")
+
         self.real_score = WanDiffusionWrapper(model_name=self.real_model_name, is_causal=False)
         self.real_score.model.requires_grad_(False)
 
