@@ -384,7 +384,8 @@ class Trainer:
                 )
 
                 log_str = "  ".join(f"{k}: {v:.4f}" for k, v in wandb_loss_dict.items())
-                print(f"[step {self.step}] {log_str}", flush=True)
+                peak_gib = torch.cuda.max_memory_allocated() / 1024 ** 3
+                print(f"[step {self.step}] {log_str}  peak_mem_gib: {peak_gib:.2f}", flush=True)
 
                 if not self.disable_wandb:
                     wandb.log(wandb_loss_dict, step=self.step)

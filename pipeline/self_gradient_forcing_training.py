@@ -34,11 +34,12 @@ class SelfGradientForcingTrainingPipeline:
         **kwargs,
     ):
         super().__init__()
-        if grad_mode != "self_gradient_forcing":
+        if grad_mode not in ("self_gradient_forcing", "self_forcing"):
             raise ValueError(
-                "This release only supports grad_mode='self_gradient_forcing'. "
+                "grad_mode must be 'self_gradient_forcing' or 'self_forcing'. "
                 f"Got {grad_mode!r}."
             )
+        self.grad_mode = grad_mode
 
         self.scheduler = scheduler
         self.generator = generator
@@ -130,6 +131,7 @@ class SelfGradientForcingTrainingPipeline:
         cross-frame attention parameters receive the recovered signal.
         """
         assert initial_latent is None, "Self Gradient Forcing training assumes text-to-video inputs."
+        grad_enabled_outer = torch.is_grad_enabled()  # critic calls this under no_grad
         batch_size, num_frames, num_channels, height, width = noise.shape
         assert num_frames % self.num_frame_per_block == 0
         num_blocks = num_frames // self.num_frame_per_block
@@ -151,6 +153,7 @@ class SelfGradientForcingTrainingPipeline:
 
         all_num_frames = [self.num_frame_per_block] * num_blocks
         current_start_frame = 0
+        sf_outputs = []
         with torch.no_grad():
             for current_num_frames in all_num_frames:
                 noisy_input = noise[:, current_start_frame:current_start_frame + current_num_frames]
@@ -165,14 +168,31 @@ class SelfGradientForcingTrainingPipeline:
                     if index == idx:
                         noisy_at_t[:, current_start_frame:current_start_frame + current_num_frames] = noisy_input
 
-                    _, x0 = self.generator(
-                        noisy_image_or_video=noisy_input,
-                        conditional_dict=conditional_dict,
-                        timestep=timestep,
-                        kv_cache=self.kv_cache1,
-                        crossattn_cache=self.crossattn_cache,
-                        current_start=current_start_frame * self.frame_seq_length,
-                    )
+                    if self.grad_mode == "self_forcing" and index == idx:
+                        # Frozen-cache Self Forcing: grad flows only through this
+                        # block's read of the (stop-gradient) KV cache. Counters
+                        # are snapshotted so gradient-checkpoint recompute does
+                        # not read a window advanced by later blocks.
+                        with torch.set_grad_enabled(grad_enabled_outer):
+                            _, x0_grad = self.generator(
+                                noisy_image_or_video=noisy_input,
+                                conditional_dict=conditional_dict,
+                                timestep=timestep,
+                                kv_cache=self._snapshot_cache_counters(self.kv_cache1),
+                                crossattn_cache=self.crossattn_cache,
+                                current_start=current_start_frame * self.frame_seq_length,
+                            )
+                        sf_outputs.append(x0_grad)
+                        x0 = x0_grad.detach()
+                    else:
+                        _, x0 = self.generator(
+                            noisy_image_or_video=noisy_input,
+                            conditional_dict=conditional_dict,
+                            timestep=timestep,
+                            kv_cache=self.kv_cache1,
+                            crossattn_cache=self.crossattn_cache,
+                            current_start=current_start_frame * self.frame_seq_length,
+                        )
 
                     if index == idx:
                         x0_exit = x0
@@ -213,21 +233,26 @@ class SelfGradientForcingTrainingPipeline:
                 )
                 current_start_frame += current_num_frames
 
-        tf_timestep = train_t * torch.ones([batch_size, num_frames], device=device, dtype=torch.int64)
-        if self.self_gradient_forcing_match_context:
-            pass2_clean_x = x_ctx_hat.detach()
-            aug_t = torch.ones([batch_size, num_frames], device=device, dtype=torch.int64) * self.context_noise
+        if self.grad_mode == "self_forcing":
+            # No pass 2: the DMD input is the per-block exit predictions whose
+            # grads only reach the frozen-cache read path.
+            output = torch.cat(sf_outputs, dim=1)
         else:
-            pass2_clean_x = x_hat.detach()
-            aug_t = torch.zeros([batch_size, num_frames], device=device, dtype=torch.int64)
+            tf_timestep = train_t * torch.ones([batch_size, num_frames], device=device, dtype=torch.int64)
+            if self.self_gradient_forcing_match_context:
+                pass2_clean_x = x_ctx_hat.detach()
+                aug_t = torch.ones([batch_size, num_frames], device=device, dtype=torch.int64) * self.context_noise
+            else:
+                pass2_clean_x = x_hat.detach()
+                aug_t = torch.zeros([batch_size, num_frames], device=device, dtype=torch.int64)
 
-        _, output = self.generator(
-            noisy_image_or_video=noisy_at_t,
-            conditional_dict=conditional_dict,
-            timestep=tf_timestep,
-            clean_x=pass2_clean_x,
-            aug_t=aug_t,
-        )
+            _, output = self.generator(
+                noisy_image_or_video=noisy_at_t,
+                conditional_dict=conditional_dict,
+                timestep=tf_timestep,
+                clean_x=pass2_clean_x,
+                aug_t=aug_t,
+            )
 
         if idx == num_denoising_steps - 1:
             denoised_timestep_to = 0
@@ -245,6 +270,15 @@ class SelfGradientForcingTrainingPipeline:
         if return_sim_step:
             return output, denoised_timestep_from, denoised_timestep_to, idx + 1
         return output, denoised_timestep_from, denoised_timestep_to
+
+    @staticmethod
+    def _snapshot_cache_counters(kv_cache):
+        # Shared K/V buffers, cloned counters: slots <= the current frame hold
+        # their final writes by backward time, so a recompute reading through
+        # frozen counters reproduces the original read exactly.
+        return [{"k": c["k"], "v": c["v"],
+                 "global_end_index": c["global_end_index"].clone(),
+                 "local_end_index": c["local_end_index"].clone()} for c in kv_cache]
 
     def _initialize_kv_cache(self, batch_size, dtype, device):
         kv_cache1 = []
