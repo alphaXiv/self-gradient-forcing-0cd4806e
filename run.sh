@@ -27,7 +27,7 @@ declare -A CKPTS=(
   [released]="checkpoints/framewise/ar/model.pt"
 )
 declare -A EMA=([init]=0 [sf]=1 [sgf]=1 [released]=1)
-HORIZONS="${HORIZONS:-21 241}"
+HORIZONS="${HORIZONS:-963}"
 
 for cond in init sf sgf released; do
   for frames in $HORIZONS; do
