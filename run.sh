@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source scripts/repro/setup_env.sh
-for m in .done_wan13b .done_wan14b .done_sgf_ckpts; do
-  [ -f "$SGF_SHARED/$m" ] || { echo "ERROR: weights not ready ($m missing)"; exit 1; }
-done
-export NNODES=1 NODE_RANK=0 MASTER_ADDR=127.0.0.1 NUM_GPUS=8
-bash scripts/train_self_gradient_forcing_framewise.sh configs/repro_sgf_framewise.yaml "$SGF_SHARED/outputs/train_sgf" --step-time-log-interval 5
+
+# Highest checkpoint step present in BOTH training arms (matched update count).
+STEP=$(python - <<'PY'
+import os, re
+def steps(d):
+    if not os.path.isdir(d):
+        return set()
+    return {int(m.group(1)) for f in os.listdir(d)
+            if (m := re.match(r"checkpoint_model_(\d+)$", f))
+            and os.path.exists(os.path.join(d, f, "model.pt"))}
+s = os.environ["SGF_SHARED"]
+common = steps(f"{s}/outputs/train_sgf") & steps(f"{s}/outputs/train_sf")
+assert common, "no common checkpoint step between train_sgf and train_sf"
+print(max(common))
+PY
+)
+echo "[eval-trained] using matched checkpoint step $STEP"
+
+export NUM_OUTPUT_FRAMES=241 SEED=0 USE_EMA=1
+OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sgf" \
+  bash scripts/infer_self_gradient_forcing.sh framewise \
+  "$SGF_SHARED/outputs/train_sgf/checkpoint_model_$(printf %06d "$STEP")/model.pt"
+OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sf" \
+  bash scripts/infer_self_gradient_forcing.sh framewise \
+  "$SGF_SHARED/outputs/train_sf/checkpoint_model_$(printf %06d "$STEP")/model.pt"
+echo "[eval-trained] DONE step=$STEP"
+ls -la "$SGF_SHARED/outputs/eval/sgf" "$SGF_SHARED/outputs/eval/sf"
