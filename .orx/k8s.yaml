@@ -15,8 +15,8 @@ spec:
             - name: SGF_SHARED
               value: /shared
           resources:
-            requests: { nvidia.com/gpu: "1", cpu: "16", memory: "128Gi" }
-            limits: { nvidia.com/gpu: "1" }
+            requests: { nvidia.com/gpu: "8", cpu: "96", memory: "768Gi" }
+            limits: { nvidia.com/gpu: "8" }
           volumeMounts:
             - { name: shared, mountPath: /shared }
             - { name: shm, mountPath: /dev/shm }
@@ -24,4 +24,4 @@ spec:
         - name: shared
           persistentVolumeClaim: { claimName: sgf-shared }
         - name: shm
-          emptyDir: { medium: Memory, sizeLimit: 64Gi }
+          emptyDir: { medium: Memory, sizeLimit: 128Gi }
