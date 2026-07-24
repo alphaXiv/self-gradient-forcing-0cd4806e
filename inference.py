@@ -98,7 +98,16 @@ else:
 if args.checkpoint_path:
     state_dict = torch.load(args.checkpoint_path, map_location="cpu")
     key = 'generator_ema' if args.use_ema else 'generator'
-    gen_sd = state_dict[key]
+    if key not in state_dict:
+        # bounded-run / init checkpoints may only carry one of the keys
+        for alt in ('generator_ema', 'generator', 'model'):
+            if alt in state_dict:
+                key = alt
+                break
+        else:
+            key = None
+        print(f"[inference] requested key missing; loading {key or 'raw state dict'}")
+    gen_sd = state_dict[key] if key is not None else state_dict
 
     try:
         pipeline.generator.load_state_dict(gen_sd)
