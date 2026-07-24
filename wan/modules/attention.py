@@ -61,6 +61,23 @@ def flash_attention(
     assert dtype in half_dtypes
     assert q.device.type == 'cuda' and q.size(-1) <= 256
 
+    if not (FLASH_ATTN_2_AVAILABLE or FLASH_ATTN_3_AVAILABLE):
+        # No flash-attn wheel for this arch (e.g. Blackwell sm_120): SDPA
+        # fallback with a key-padding mask built from k_lens to preserve
+        # varlen semantics.
+        def half(x):
+            return x if x.dtype in half_dtypes else x.to(dtype)
+        attn_mask = None
+        if k_lens is not None:
+            lk = k.size(1)
+            attn_mask = (torch.arange(lk, device=k.device)[None, :] <
+                         k_lens.to(k.device)[:, None])[:, None, None, :]
+        out = torch.nn.functional.scaled_dot_product_attention(
+            half(q).transpose(1, 2), half(k).transpose(1, 2), half(v).transpose(1, 2),
+            attn_mask=attn_mask, is_causal=causal, dropout_p=dropout_p,
+            scale=softmax_scale)
+        return out.transpose(1, 2).contiguous().type(q.dtype)
+
     # params
     b, lq, lk, out_dtype = q.size(0), q.size(1), k.size(1), q.dtype
 
