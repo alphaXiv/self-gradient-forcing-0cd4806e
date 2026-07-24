@@ -20,11 +20,20 @@ import torch.distributed as dist
 # wan 1.3B model has a weird channel / head configurations and require max-autotune to work with flexattention
 # see https://github.com/pytorch/pytorch/issues/133254
 # change to default for other models
+# max-autotune lets inductor pick block sizes that fit the GPU's shared
+# memory (sm_120 has ~99KB; the default config needs 126KB and fails).
 flex_attention = torch.compile(
     flex_attention,
     dynamic=False,
-    mode="default"
+    mode="max-autotune-no-cudagraphs"
 )
+
+# RTX PRO 6000 Blackwell (sm_120) has ~101KB shared memory per SM; the default
+# flex block sizes need ~126KB. Shrink blocks so kernels fit.
+FLEX_KERNEL_OPTIONS = {
+    "BLOCK_M": 64, "BLOCK_N": 64,
+    "BLOCK_M1": 32, "BLOCK_N1": 64, "BLOCK_M2": 64, "BLOCK_N2": 32,
+}
 
 
 
@@ -220,7 +229,8 @@ class CausalWanSelfAttention(nn.Module):
                     query=padded_roped_query.transpose(2, 1),
                     key=padded_roped_key.transpose(2, 1),
                     value=padded_v.transpose(2, 1),
-                    block_mask=block_mask
+                    block_mask=block_mask,
+                    kernel_options=FLEX_KERNEL_OPTIONS
                 )[:, :, :-padded_length].transpose(2, 1)
 
             else:
@@ -251,7 +261,8 @@ class CausalWanSelfAttention(nn.Module):
                     query=padded_roped_query.transpose(2, 1),
                     key=padded_roped_key.transpose(2, 1),
                     value=padded_v.transpose(2, 1),
-                    block_mask=block_mask
+                    block_mask=block_mask,
+                    kernel_options=FLEX_KERNEL_OPTIONS
                 )[:, :, :-padded_length].transpose(2, 1)
         elif self.kv_rope_relative:
             # ── Streaming long-video path ──────────────────────────────────
