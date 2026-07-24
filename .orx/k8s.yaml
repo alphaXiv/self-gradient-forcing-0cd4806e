@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sgf-{{ORX_RUN}}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: run
+          image: pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel
+          command: ["bash", "-c", "$ORX_SCRIPT"]
+          env:
+            - name: SGF_SHARED
+              value: /shared
+          resources:
+            requests: { nvidia.com/gpu: "1", cpu: "16", memory: "128Gi" }
+            limits: { nvidia.com/gpu: "1" }
+          volumeMounts:
+            - { name: shared, mountPath: /shared }
+            - { name: shm, mountPath: /dev/shm }
+      volumes:
+        - name: shared
+          persistentVolumeClaim: { claimName: sgf-shared }
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: 64Gi }
