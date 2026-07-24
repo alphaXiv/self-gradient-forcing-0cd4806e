@@ -63,11 +63,11 @@ except Exception:
     print(0)
 PY
 )"
-if (( GPU_COUNT >= 8 )); then
-    RUN_GPUS=8
-else
-    RUN_GPUS=1
-fi
+case "$GPU_COUNT" in
+    8|4|2) RUN_GPUS=$GPU_COUNT ;;   # 8 prompts split evenly across ranks
+    *) RUN_GPUS=1 ;;
+esac
+(( GPU_COUNT > 8 )) && RUN_GPUS=8
 
 promptset="$(basename "$PROMPTS" .txt)"
 OUTPUT_FOLDER="${OUTPUT_FOLDER:-${OUTPUT_ROOT}/${VARIANT}_${promptset}_frames${NUM_OUTPUT_FRAMES}}"

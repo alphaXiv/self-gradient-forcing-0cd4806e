@@ -15,8 +15,8 @@ spec:
             - name: SGF_SHARED
               value: /shared
           resources:
-            requests: { nvidia.com/gpu: "8", cpu: "96", memory: "768Gi" }
-            limits: { nvidia.com/gpu: "8" }
+            requests: { nvidia.com/gpu: "4", cpu: "48", memory: "384Gi" }
+            limits: { nvidia.com/gpu: "4" }
           volumeMounts:
             - { name: shared, mountPath: /shared }
             - { name: shm, mountPath: /dev/shm }
