@@ -141,7 +141,7 @@ def main():
         if not d.is_dir():
             print(f"[metrics] skip missing condition {cond}")
             continue
-        vids = sorted(d.glob("*.mp4"))
+        vids = sorted(d.rglob("*.mp4"))
         cond_res = []
         for v in vids:
             r = analyze_video(v, ex)
