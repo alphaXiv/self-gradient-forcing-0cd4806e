@@ -19,12 +19,12 @@ PY
 )
 echo "[eval-trained] using matched checkpoint step $STEP"
 
-export NUM_OUTPUT_FRAMES=241 SEED=0 USE_EMA=1
-OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sgf" \
+export NUM_OUTPUT_FRAMES=963 SEED=0 USE_EMA=1
+OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sgf_f963" \
   bash scripts/infer_self_gradient_forcing.sh framewise \
   "$SGF_SHARED/outputs/train_sgf/checkpoint_model_$(printf %06d "$STEP")/model.pt"
-OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sf" \
+OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sf_f963" \
   bash scripts/infer_self_gradient_forcing.sh framewise \
   "$SGF_SHARED/outputs/train_sf/checkpoint_model_$(printf %06d "$STEP")/model.pt"
 echo "[eval-trained] DONE step=$STEP"
-ls -la "$SGF_SHARED/outputs/eval/sgf" "$SGF_SHARED/outputs/eval/sf"
+ls -la "$SGF_SHARED/outputs/eval/sgf_f963" "$SGF_SHARED/outputs/eval/sf_f963"
