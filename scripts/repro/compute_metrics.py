@@ -23,7 +23,9 @@ EVAL = OUT / "eval"
 MET = OUT / "metrics"
 WINDOW_S, FPS = 5, 16
 FEAT_STRIDE = 4          # 4 fps feature sampling
-CONDITIONS = ["init", "released", "sgf", "sf", "init_f963", "released_f963", "sgf_f963", "sf_f963"]
+CONDITIONS = ["init", "released", "sgf", "sf",
+              "init_f21", "released_f21", "sgf_f21", "sf_f21",
+              "init_f963", "released_f963", "sgf_f963", "sf_f963"]
 
 
 def read_video(path):
