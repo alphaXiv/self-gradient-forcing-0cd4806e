@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "paperId": "2607.20368",
+  "title": "Self Gradient Forcing reproduction: gradient path, two-pass fidelity/memory, and matched bounded training on Wan2.1-1.3B",
+  "description": "All three central claims reproduced on the released framewise implementation: future-loss gradients reach KV-cache writing only under SGF, pass-2 replay matches the serial rollout to 1.33% rel-L2 while naive differentiable rollouts OOM a 96GB GPU, and a matched 250-step budget differing by one config line gives SGF 0.829 vs 0.675 DINO subject consistency at 240s over frozen-cache Self Forcing.",
+  "verdict": "reproduced",
+  "reportPath": "reports/reproduction/report.md",
+  "notebookPath": "notebooks/reproduction.py",
+  "compute": {
+    "backend": "kubernetes",
+    "gpuModel": "NVIDIA RTX PRO 6000 Blackwell",
+    "gpuCount": 16,
+    "wallHours": 4.5
+  }
+}

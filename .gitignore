@@ -26,3 +26,4 @@ eval_runs/
 *.mp4
 *.log
 .DS_Store
+__marimo__/

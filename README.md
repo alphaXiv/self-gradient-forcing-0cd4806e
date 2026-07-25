@@ -1,3 +1,61 @@
+# Reproduction: Self Gradient Forcing — Native Long Video Extrapolation (arXiv 2607.20368)
+
+> **Reproduction study — verdict: reproduced (bounded training budget).**
+> All three central claims validated on the released Wan2.1-1.3B frame-wise
+> implementation: (1) SGF's two-pass replay restores future-loss gradients to
+> the context KV-writing path (structurally absent under frozen-cache Self
+> Forcing); (2) the parallel replay matches the serial rollout to 1.33%
+> relative L2 (paper: 1.41%) while naive differentiation through the rollout
+> OOMs a 96GB GPU at every tested length; (3) from the same init under a
+> matched 250-step budget differing by one config line, SGF reaches 0.844
+> DINO subject consistency at 60s vs 0.685 for frozen-cache Self Forcing,
+> and the gap persists out to 240 seconds (0.829 vs 0.675; init 0.549,
+> authors' full 1500-step release 0.904).
+>
+> 📄 **[Detailed report](reports/reproduction/report.md)** ·
+> 📓 **[Tutorial notebook](notebooks/reproduction.py)**
+> [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/alphaXiv/self-gradient-forcing-0cd4806e/blob/main/notebooks/reproduction.py)
+
+**Compute** — operator's Kubernetes cluster, 2×8 NVIDIA RTX PRO 6000
+Blackwell (96GB, sm_120), peak 16 concurrent GPUs, ~4.5h elapsed. Blackwell
+notes: no flash-attn wheel → torch-SDPA fallback (exact here since
+`k_lens=None` throughout); flex_attention compiled with
+`max-autotune-no-cudagraphs` (default kernel exceeds sm_120's ~99KB shared
+memory); fixed a `[:, :, :-0]` empty-slice edge case for sequence lengths
+divisible by 128.
+
+**Downscaling vs the paper** — 250 training steps (50 generator updates) vs
+1500; 8 release prompts, matched seeds; VBench-style DINO/CLIP metrics
+reimplemented rather than the official VBench pipeline. The released
+1500-step checkpoint is evaluated alongside as the full-training reference.
+
+## Experiment log
+
+Fixed run contract: every experiment branch runs `bash run.sh` under orx on
+the Kubernetes backend, with its resource shape in a committed manifest
+(`.orx/k8s.yaml`, 8-GPU training/eval shape in `.orx/k8s-train.yaml`).
+
+| Branch | Purpose | Run command | Outcome | Compute |
+|---|---|---|---|---|
+| [orx/baseline-env-probe-weights-to-pvc](../../tree/orx/baseline-env-probe-weights-to-pvc) | Env bootstrap on Blackwell, weights → shared PVC, smoke two-pass rollout | `bash run.sh` | done — env validated, 3-frame two-pass backward grad_norm 0.96 | 1 GPU |
+| [orx/probe-gradient-path-to-context-kv-writes](../../tree/orx/probe-gradient-path-to-context-kv-writes) | Claim 1: future-loss gradient path to KV writes, SGF vs frozen cache | `bash run.sh` | done — SGF: nonzero context grads (causally structured); control: no path (8/8 absent) | 1 GPU |
+| [orx/probe-pass-2-reconstruction-fidelity-memory-scal](../../tree/orx/probe-pass-2-reconstruction-fidelity-memory-scal) | Claim 2: pass-2 fidelity + backward memory vs rollout length | `bash run.sh` | done — 1.33% rel L2; naive differentiable rollout OOM at F=6/12/21; SGF ≤42.7GB | 1 GPU |
+| [orx/train-sgf-framewise-bounded-seed-42](../../tree/orx/train-sgf-framewise-bounded-seed-42) | Claim 3: SGF training, release config, seed 42, bounded | `bash run.sh` | done — 250 steps @42.8 s/step, peak 59.25GB; ckpt on PVC | 8 GPU |
+| [orx/train-frozen-cache-self-forcing-control-bounded](../../tree/orx/train-frozen-cache-self-forcing-control-bounded) | Claim 3 control: identical but `grad_mode: self_forcing` (1-line diff) | `bash run.sh` | done — 250 steps @39.6 s/step, peak 53.23GB; ckpt on PVC | 8 GPU |
+| [orx/eval-trained-bounded-sgf-vs-sf-checkpoints-60s-r](../../tree/orx/eval-trained-bounded-sgf-vs-sf-checkpoints-60s-r) | 60s (241-latent) identical-seed rollouts, trained pair | `bash run.sh` | done — 8+8 videos | 8 GPU |
+| [orx/eval-refs-init-released-sgf-checkpoints-60s-roll](../../tree/orx/eval-refs-init-released-sgf-checkpoints-60s-roll) | 60s rollouts, init + released reference checkpoints | `bash run.sh` | done — 8+8 videos | 8 GPU |
+| [orx/eval-short-5s-21-latents-all-conditions](../../tree/orx/eval-short-5s-21-latents-all-conditions) | 5s (21-latent) rollouts, all four conditions | `bash run.sh` | done | 8 GPU |
+| [orx/eval-240s-horizon-for-init-released-checkpoints](../../tree/orx/eval-240s-horizon-for-init-released-checkpoints) | 240s (963-latent) rollouts, reference checkpoints | `bash run.sh` | done | 4 GPU |
+| [orx/eval-trained-240s-bounded-sgf-vs-sf-at-963-laten](../../tree/orx/eval-trained-240s-bounded-sgf-vs-sf-at-963-laten) | 240s rollouts, trained pair | `bash run.sh` | done | 8 GPU |
+| [orx/metrics-frame-strips-over-horizon](../../tree/orx/metrics-frame-strips-over-horizon) | DINO/CLIP/flicker metrics, drift curves, frame strips | `bash run.sh` | done — summary tables + strips on PVC, mirrored in report | 1 GPU |
+| `main` | Not run as an experiment (publication surface) | — | — | — |
+
+Early exploratory branches (`orx/probe-context-gradient-path-sgf-vs-frozen-cache`,
+`orx/eval-horizon-consistency-across-checkpoints`, `orx/eval-extended-240s-horizon-963-latents`)
+were superseded before producing runs and are kept only for provenance.
+
+---
+
 <div align="center">
 
 # 🌀 Self Gradient Forcing
