@@ -23,7 +23,7 @@ EVAL = OUT / "eval"
 MET = OUT / "metrics"
 WINDOW_S, FPS = 5, 16
 FEAT_STRIDE = 4          # 4 fps feature sampling
-CONDITIONS = ["init", "released", "sgf", "sf"]
+CONDITIONS = ["init", "released", "sgf", "sf", "init_f963", "released_f963", "sgf_f963", "sf_f963"]
 
 
 def read_video(path):
@@ -100,29 +100,29 @@ def analyze_video(path, ex):
     return res
 
 
-def frame_strip(cond_paths, out_png, times_s=(0, 10, 20, 30, 40, 50, 59)):
+def frame_strip(cond_paths, out_png, n_cols=7):
+    """Rows = conditions, columns = fixed fractions of each video's length
+    (so 60s and 240s rows can share a figure; per-cell time labels)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    rows = []
-    labels = []
+    fracs = np.linspace(0, 0.99, n_cols)
+    rows, labels, times = [], [], []
     for cond, path in cond_paths.items():
         frames = read_video(path)
-        idxs = [min(int(t * FPS), len(frames) - 1) for t in times_s]
+        idxs = [min(int(f * len(frames)), len(frames) - 1) for f in fracs]
         rows.append([frames[i] for i in idxs])
+        times.append([i / FPS for i in idxs])
         labels.append(cond)
-    fig, axes = plt.subplots(len(rows), len(times_s),
-                             figsize=(2.2 * len(times_s), 1.45 * len(rows)))
+    fig, axes = plt.subplots(len(rows), n_cols,
+                             figsize=(2.2 * n_cols, 1.55 * len(rows)))
     axes = np.atleast_2d(axes)
     for r, (row, lab) in enumerate(zip(rows, labels)):
         for c, img in enumerate(row):
             ax = axes[r, c]
             ax.imshow(img)
             ax.set_xticks([]), ax.set_yticks([])
-            if r == 0:
-                ax.set_title(f"t={times_s[c]}s", fontsize=8)
-            if c == 0:
-                ax.set_ylabel(lab, fontsize=8)
+            ax.set_title(f"{lab} t={times[r][c]:.0f}s", fontsize=7)
     fig.tight_layout(pad=0.3)
     fig.savefig(out_png, dpi=110)
     plt.close(fig)
