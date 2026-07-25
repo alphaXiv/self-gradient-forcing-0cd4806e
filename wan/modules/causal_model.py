@@ -240,7 +240,7 @@ class CausalWanSelfAttention(nn.Module):
                     value=padded_v.transpose(2, 1),
                     block_mask=block_mask,
                     kernel_options=FLEX_KERNEL_OPTIONS
-                )[:, :, :-padded_length].transpose(2, 1)
+                )[:, :, :q.shape[1]].transpose(2, 1)
 
             else:
                 roped_query = rope_apply(q, grid_sizes, freqs).type_as(v)
@@ -272,7 +272,7 @@ class CausalWanSelfAttention(nn.Module):
                     value=padded_v.transpose(2, 1),
                     block_mask=block_mask,
                     kernel_options=FLEX_KERNEL_OPTIONS
-                )[:, :, :-padded_length].transpose(2, 1)
+                )[:, :, :q.shape[1]].transpose(2, 1)
         elif self.kv_rope_relative:
             # ── Streaming long-video path ──────────────────────────────────
             # Store raw (pre-RoPE) K/V; re-apply RoPE with relative indices so
