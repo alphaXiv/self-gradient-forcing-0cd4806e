@@ -2,7 +2,6 @@
 set -euo pipefail
 source scripts/repro/setup_env.sh
 
-# Highest checkpoint step present in BOTH training arms (matched update count).
 STEP=$(python - <<'PY'
 import os, re
 def steps(d):
@@ -13,18 +12,22 @@ def steps(d):
             and os.path.exists(os.path.join(d, f, "model.pt"))}
 s = os.environ["SGF_SHARED"]
 common = steps(f"{s}/outputs/train_sgf") & steps(f"{s}/outputs/train_sf")
-assert common, "no common checkpoint step between train_sgf and train_sf"
+assert common, "no common checkpoint step"
 print(max(common))
 PY
 )
-echo "[eval-trained] using matched checkpoint step $STEP"
+echo "[eval-short] matched checkpoint step $STEP"
+PAD_STEP=$(printf %06d "$STEP")
 
-export NUM_OUTPUT_FRAMES=241 SEED=0 USE_EMA=1
-OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sgf" \
-  bash scripts/infer_self_gradient_forcing.sh framewise \
-  "$SGF_SHARED/outputs/train_sgf/checkpoint_model_$(printf %06d "$STEP")/model.pt"
-OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sf" \
-  bash scripts/infer_self_gradient_forcing.sh framewise \
-  "$SGF_SHARED/outputs/train_sf/checkpoint_model_$(printf %06d "$STEP")/model.pt"
-echo "[eval-trained] DONE step=$STEP"
-ls -la "$SGF_SHARED/outputs/eval/sgf" "$SGF_SHARED/outputs/eval/sf"
+export NUM_OUTPUT_FRAMES=21 SEED=0
+
+USE_EMA=0 OUTPUT_ROOT="$SGF_SHARED/outputs/eval/init_f21" \
+  bash scripts/infer_self_gradient_forcing.sh framewise "$SGF_SHARED/checkpoints/init_normalized/model.pt"
+USE_EMA=1 OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sf_f21" \
+  bash scripts/infer_self_gradient_forcing.sh framewise "$SGF_SHARED/outputs/train_sf/checkpoint_model_$PAD_STEP/model.pt"
+USE_EMA=1 OUTPUT_ROOT="$SGF_SHARED/outputs/eval/sgf_f21" \
+  bash scripts/infer_self_gradient_forcing.sh framewise "$SGF_SHARED/outputs/train_sgf/checkpoint_model_$PAD_STEP/model.pt"
+USE_EMA=1 OUTPUT_ROOT="$SGF_SHARED/outputs/eval/released_f21" \
+  bash scripts/infer_self_gradient_forcing.sh framewise "checkpoints/framewise/ar/model.pt"
+echo "[eval-short] DONE"
+find "$SGF_SHARED/outputs/eval" -maxdepth 1 -name "*_f21" | sort
