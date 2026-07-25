@@ -31,14 +31,16 @@ def init_diff_kv_cache():
     return [{"k_list": [], "v_list": []} for _ in range(NUM_BLOCKS_TRANSFORMER)]
 
 
-def snapshot_kv_cache(kv_cache):
+def snapshot_kv_cache(kv_cache, clone=False):
     """Freeze the cache counters for a grad-enabled read: gradient-checkpoint
     recompute re-reads the cache at backward time, when the counters have
     advanced past this frame (the read window would leak future frames).
-    K/V buffers are shared: slots <= current frame hold their final context
-    writes already, and the recomputed forward rewrites its own slot before
-    reading, so values match the original read."""
-    return [{"k": c["k"], "v": c["v"],
+    With clone=False K/V buffers are shared (later in-place writes can trip
+    autograd's version counter depending on the SDPA backend); clone=True is
+    the correct-by-construction serial variant, at the cost of holding a cache
+    copy alive per grad-enabled frame."""
+    return [{"k": c["k"].clone() if clone else c["k"],
+             "v": c["v"].clone() if clone else c["v"],
              "global_end_index": c["global_end_index"].clone(),
              "local_end_index": c["local_end_index"].clone()} for c in kv_cache]
 
@@ -93,11 +95,11 @@ def serial_rollout(gen, scheduler, denoising_step_list, noise, cond,
                 timestep = torch.ones([B, 1], device=device, dtype=torch.int64) * current_timestep
                 if index == exit_idx:
                     noisy_at_t[:, i:i + 1] = noisy_input.detach()
-                if mode == "self_forcing" and index == exit_idx:
+                if mode.startswith("self_forcing") and index == exit_idx:
                     with torch.enable_grad():
                         _, x0 = gen(noisy_image_or_video=noisy_input,
                                     conditional_dict=cond, timestep=timestep,
-                                    kv_cache=snapshot_kv_cache(kv_cache),
+                                    kv_cache=snapshot_kv_cache(kv_cache, clone=mode.endswith("clone")),
                                     crossattn_cache=ca_cache,
                                     current_start=i * FRAME_SEQ_LEN)
                     sf_outputs.append(x0)
