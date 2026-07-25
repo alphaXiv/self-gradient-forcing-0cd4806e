@@ -17,7 +17,7 @@
 > [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/alphaXiv/self-gradient-forcing-0cd4806e/blob/main/notebooks/reproduction.py)
 
 **Compute** — operator's Kubernetes cluster, 2×8 NVIDIA RTX PRO 6000
-Blackwell (96GB, sm_120), peak 16 concurrent GPUs, ~4.5h elapsed. Blackwell
+Blackwell (96GB, sm_120), peak 16 concurrent GPUs, ~4.8h elapsed. Blackwell
 notes: no flash-attn wheel → torch-SDPA fallback (exact here since
 `k_lens=None` throughout); flex_attention compiled with
 `max-autotune-no-cudagraphs` (default kernel exceeds sm_120's ~99KB shared

@@ -148,7 +148,7 @@ wall-clock per step is ~18× the paper's hardware.
 
 Operator's Kubernetes cluster (2 nodes × 8 NVIDIA RTX PRO 6000 Blackwell
 Server Edition, 96GB), peak 16 concurrent GPUs (two simultaneous 8-GPU
-training jobs), ~4.5 hours elapsed wall time across 13 terminal runs (plus the two
+training jobs), ~4.8 hours elapsed wall time across 13 terminal runs (plus the two
 training runs, cancelled by design after saving their matched step-250
 checkpoints). Exact manifests,
 configs, and terminal logs live on the `orx/*` experiment branches (table in
